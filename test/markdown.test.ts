@@ -53,6 +53,11 @@ describe("cleanMarkdown", () => {
 		assert.equal(cleanMarkdown(md), "Read the guide and this.\n\n```md\n[keep](this)\n```");
 	});
 
+	test("leaves ~~~ and indented fences untouched", () => {
+		const md = "- Step [one](https://x.y):\n\n   ```sh\n   # not a heading [or](a-link)\n   ```\n\n~~~\n# comment\n~~~";
+		assert.equal(cleanMarkdown(md, { shiftHeadings: 2 }), "- Step one:\n\n   ```sh\n   # not a heading [or](a-link)\n   ```\n\n~~~\n# comment\n~~~");
+	});
+
 	test("keeps links when asked", () => {
 		assert.equal(cleanMarkdown("[a](https://x.y)", { links: true }), "[a](https://x.y)");
 	});

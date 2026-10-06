@@ -173,9 +173,10 @@ export function cleanMarkdown(markdown: string, { links = false, shiftHeadings =
 			.replace(/\[([^\]]+)\]\[\w+\]/g, "$1") // [text][ref]
 			.replace(/^ {0,3}\[\w+\]:\s*\S+.*$/gm, ""); // [ref]: url
 	};
-	// split() with a capturing group alternates prose (even indexes) and fenced code blocks (odd indexes).
+	// split() with one capturing group alternates prose (even indexes) and fenced code blocks (odd indexes).
+	// Fences may be ``` or ~~~, and indented when nested in a list item.
 	return markdown
-		.split(/(^```[^]*?^```)/m)
+		.split(/(^[ \t]*(?:```[^]*?^[ \t]*```|~~~[^]*?^[ \t]*~~~))/m)
 		.map((part, i) => (i % 2 ? part : prose(part)))
 		.join("")
 		.replace(/\n{3,}/g, "\n\n")

@@ -1,6 +1,6 @@
 {
   "name": "pi-web-fetch",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Pi coding agent extension: a web_fetch tool that reads any URL as compact markdown — web pages, docs, PDFs, images, YouTube transcripts, GitHub issues and PRs, Stack Overflow.",
   "type": "module",
   "license": "MIT",
