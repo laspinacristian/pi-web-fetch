@@ -8,6 +8,9 @@ interface User {
 	login: string;
 }
 interface Issue {
+	/** API URL of the issue, which may be in another repository if the issue was transferred. */
+	url: string;
+	html_url: string;
 	title: string;
 	body: string | null;
 	state: string;
@@ -89,11 +92,18 @@ export const github: Source = {
 	},
 };
 
-async function readIssue({ owner, repo, number, isPull }: IssueRef, url: URL, { links, signal }: FetchOptions): Promise<Page> {
+async function readIssue(ref: IssueRef, url: URL, { links, signal }: FetchOptions): Promise<Page> {
 	const headers: Record<string, string> = { Accept: "application/vnd.github+json", "User-Agent": "pi-web-fetch", "X-GitHub-Api-Version": "2022-11-28" };
 	const auth = await githubToken();
 	if (auth) headers.Authorization = `Bearer ${auth}`;
-	const api = <T>(path: string) => getJson<T>(`https://api.github.com/repos/${owner}/${repo}${path}`, signal, headers);
+	const get = <T>(apiUrl: string) => getJson<T>(apiUrl, signal, headers);
+
+	// The issue endpoint redirects when the issue was transferred to another repository; the list endpoints do not.
+	// The issue's own URL tells where it lives now.
+	const issue = await get<Issue>(`https://api.github.com/repos/${ref.owner}/${ref.repo}/issues/${ref.number}`);
+	const { owner, repo, number, isPull } = { ...ref, ...parseIssueUrl(new URL(issue.html_url)) };
+	const transferred = owner !== ref.owner || repo !== ref.repo;
+	const api = <T>(path: string) => get<T>(`https://api.github.com/repos/${owner}/${repo}${path}`);
 	/** Lists cut at MAX_PAGES, by what they hold. */
 	const partial: string[] = [];
 	const list = async <T>(path: string, what: string): Promise<T[]> => {
@@ -107,8 +117,7 @@ async function readIssue({ owner, repo, number, isPull }: IssueRef, url: URL, { 
 		return items;
 	};
 
-	const [issue, comments, pull, files, reviews, reviewComments] = await Promise.all([
-		api<Issue>(`/issues/${number}`),
+	const [comments, pull, files, reviews, reviewComments] = await Promise.all([
 		list<Comment>(`/issues/${number}/comments`, "comments"),
 		isPull ? api<PullRequest>(`/pulls/${number}`) : undefined,
 		isPull ? list<ChangedFile>(`/pulls/${number}/files`, "changed files") : [],
@@ -124,6 +133,7 @@ async function readIssue({ owner, repo, number, isPull }: IssueRef, url: URL, { 
 	const meta = [`${owner}/${repo}#${number}`, isPull ? "pull request" : "issue", state, `opened by ${author(issue.user)} on ${isoDate(issue.created_at)}`];
 	if (issue.labels.length) meta.push(`labels: ${issue.labels.map((label) => label.name).join(", ")}`);
 	if (pull) meta.push(`${pull.base.ref} ← ${pull.head.label}`, `+${pull.additions} −${pull.deletions} in ${pull.changed_files} files`);
+	if (transferred) meta.push(`transferred from ${ref.owner}/${ref.repo}#${ref.number}`);
 	if (partial.length) meta.push(`only the first ${MAX_PAGES * 100} ${partial.join(", ")} are shown`);
 
 	const conversation = [
