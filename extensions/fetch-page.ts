@@ -1,3 +1,4 @@
+import { gunzipSync } from "node:zlib";
 import { extractText, getDocumentProxy } from "unpdf";
 import { browserFetch, errorMessage, type FetchOptions, type HttpResponse, isAbort, type Page, type Source, Unreadable } from "./core.ts";
 import { htmlToPage } from "./html.ts";
@@ -5,12 +6,15 @@ import { cleanMarkdown } from "./markdown.ts";
 import { readFromBraveIndex } from "./sources/brave-index.ts";
 import { github, rawFileUrl } from "./sources/github.ts";
 import { stackExchange } from "./sources/stack-exchange.ts";
+import { xmlToPage } from "./xml.ts";
 
 const SOURCES: Source[] = [github, stackExchange];
 /** Statuses that mean "not for scripts" rather than "not found". */
 const REFUSED = new Set([401, 403, 429, 451, 503]);
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const GZIP_TYPES = new Set(["application/gzip", "application/x-gzip"]);
+const isGzip = (bytes: Buffer) => bytes[0] === 0x1f && bytes[1] === 0x8b;
 
 /**
  * Read a URL: through a site's API when one is better than its HTML, otherwise directly, and from Brave's index
@@ -91,9 +95,20 @@ async function readResponse(response: HttpResponse, url: URL, options: FetchOpti
 		return { text: `Image ${url.href} (${type}, ${Math.round(bytes.length / 1024)} KB)`, image: { data: bytes.toString("base64"), mimeType: type } };
 	}
 
-	if (type === "" || type.includes("html")) return htmlToPage(await response.text(), url, options);
+	const textual = type === "" || type.includes("html") || type.startsWith("text/") || /json|xml|javascript/.test(type);
+	if (!textual && !GZIP_TYPES.has(type)) throw new Error(`unsupported content type: ${type}`);
 
-	if (type.startsWith("text/") || /json|xml|javascript/.test(type)) return { text: await response.text() };
+	// Sitemaps are often served compressed (sitemap.xml.gz): the bytes tell, as servers declare it either way.
+	const text = GZIP_TYPES.has(type) || url.pathname.endsWith(".gz") ? inflate(Buffer.from(await response.arrayBuffer())) : await response.text();
+	// A feed or a sitemap, whatever content type the server declares for it.
+	const page = xmlToPage(text, url, options);
+	if (page) return page;
+	return type === "" || type.includes("html") ? htmlToPage(text, url, options) : { text };
+}
 
-	throw new Error(`unsupported content type: ${type}`);
+/** Text of a body that may be gzip-compressed; binary content is refused. */
+function inflate(bytes: Buffer): string {
+	const content = isGzip(bytes) ? gunzipSync(bytes) : bytes;
+	if (content.subarray(0, 1024).includes(0)) throw new Error("unsupported content: binary data");
+	return content.toString();
 }

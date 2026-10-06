@@ -18,6 +18,8 @@ pi install git:github.com/laspinacristian/pi-web-fetch
 | GitHub issue or pull request | Body, comments, reviews, review comments and changed files, from the REST API |
 | GitHub file | The raw file |
 | Stack Exchange question | Question, all answers and comments, from the API. The linked answer comes first, then the accepted one |
+| RSS or Atom feed | One section per entry: title, date, author, link, content (cut at 2,000 characters; the link leads to the rest) |
+| Sitemap, also compressed (`.xml.gz`) | One line per page with its modification date; a sitemap index lists its sitemaps |
 | Text, JSON, XML, diff | Unchanged |
 
 Output over 30,000 characters is cut at a paragraph boundary. The full text is saved to a temporary file, and its path is returned together with the sections that were left out.
