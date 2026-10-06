@@ -12,6 +12,10 @@ describe("domToMarkdown", () => {
 		assert.equal(convert(html), "```yaml\nservices:\n  db:\n    image: postgres  # comment . ,\n```");
 	});
 
+	test("escapes text that would read as a heading, not headings", () => {
+		assert.equal(convert("<h2># 1</h2><p># Comments: 5<br>#hashtag<br>## two</p><ul><li># x</li></ul>"), "## # 1\n\n\\# Comments: 5\n#hashtag\n\\## two\n\n- \\# x");
+	});
+
 	test("renders inline code and emphasis without moving surrounding spaces", () => {
 		assert.equal(convert("<p>Call <code>fetch()</code> and <strong> await </strong>it, <em>then</em> parse.</p>"), "Call `fetch()` and **await** it, *then* parse.");
 	});

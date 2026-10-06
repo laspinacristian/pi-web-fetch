@@ -66,7 +66,8 @@ export function domToMarkdown(root: Element, { links = false, baseUrl }: Markdow
 		const parts: string[] = [];
 		let run = "";
 		const flush = () => {
-			if (run.trim()) parts.push(collapse(run));
+			// Text that opens a line like a heading ("# Comments: 5") is not one: the markers are read structurally.
+			if (run.trim()) parts.push(collapse(run).replace(/^(#{1,6})(?= )/gm, "\\$1"));
 			run = "";
 		};
 		for (const child of node.childNodes) {
