@@ -40,11 +40,17 @@ export default function webFetch(pi: ExtensionAPI) {
 		async execute(_toolCallId, params, signal) {
 			const url = parseUrl(params.url);
 			const timeout = AbortSignal.timeout(TIMEOUT_MS);
-			const page = await fetchPage(url, {
-				links: params.links ?? false,
-				language: params.language,
-				signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-			});
+			let page: Page;
+			try {
+				page = await fetchPage(url, {
+					links: params.links ?? false,
+					language: params.language,
+					signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+				});
+			} catch (error) {
+				if (timeout.aborted && !signal?.aborted) throw new Error(`Timed out after ${TIMEOUT_MS / 1000} s: ${url.href}`);
+				throw error;
+			}
 
 			if (page.image) {
 				return { content: [{ type: "text", text: page.text }, { type: "image", ...page.image }], details: { url: url.href } };

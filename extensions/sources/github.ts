@@ -94,23 +94,26 @@ async function readIssue({ owner, repo, number, isPull }: IssueRef, url: URL, { 
 	const auth = await githubToken();
 	if (auth) headers.Authorization = `Bearer ${auth}`;
 	const api = <T>(path: string) => getJson<T>(`https://api.github.com/repos/${owner}/${repo}${path}`, signal, headers);
-	const list = async <T>(path: string): Promise<T[]> => {
+	/** Lists cut at MAX_PAGES, by what they hold. */
+	const partial: string[] = [];
+	const list = async <T>(path: string, what: string): Promise<T[]> => {
 		const items: T[] = [];
 		for (let page = 1; page <= MAX_PAGES; page++) {
 			const batch = await api<T[]>(`${path}?per_page=100&page=${page}`);
 			items.push(...batch);
-			if (batch.length < 100) break;
+			if (batch.length < 100) return items;
 		}
+		partial.push(what);
 		return items;
 	};
 
 	const [issue, comments, pull, files, reviews, reviewComments] = await Promise.all([
 		api<Issue>(`/issues/${number}`),
-		list<Comment>(`/issues/${number}/comments`),
+		list<Comment>(`/issues/${number}/comments`, "comments"),
 		isPull ? api<PullRequest>(`/pulls/${number}`) : undefined,
-		isPull ? list<ChangedFile>(`/pulls/${number}/files`) : [],
-		isPull ? list<Review>(`/pulls/${number}/reviews`) : [],
-		isPull ? list<ReviewComment>(`/pulls/${number}/comments`) : [],
+		isPull ? list<ChangedFile>(`/pulls/${number}/files`, "changed files") : [],
+		isPull ? list<Review>(`/pulls/${number}/reviews`, "reviews") : [],
+		isPull ? list<ReviewComment>(`/pulls/${number}/comments`, "review comments") : [],
 	]);
 
 	// Posts are nested under "## Comments" and "### @author": their own headings are demoted below those.
@@ -121,6 +124,7 @@ async function readIssue({ owner, repo, number, isPull }: IssueRef, url: URL, { 
 	const meta = [`${owner}/${repo}#${number}`, isPull ? "pull request" : "issue", state, `opened by ${author(issue.user)} on ${isoDate(issue.created_at)}`];
 	if (issue.labels.length) meta.push(`labels: ${issue.labels.map((label) => label.name).join(", ")}`);
 	if (pull) meta.push(`${pull.base.ref} ← ${pull.head.label}`, `+${pull.additions} −${pull.deletions} in ${pull.changed_files} files`);
+	if (partial.length) meta.push(`only the first ${MAX_PAGES * 100} ${partial.join(", ")} are shown`);
 
 	const conversation = [
 		...comments.map((c) => ({ at: c.created_at, heading: `${author(c.user)} · ${isoDate(c.created_at)}`, body: c.body })),

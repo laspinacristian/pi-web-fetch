@@ -80,7 +80,9 @@ async function readResponse(response: HttpResponse, url: URL, options: FetchOpti
 
 	if (type === "application/pdf") {
 		const pdf = await getDocumentProxy(new Uint8Array(await response.arrayBuffer()));
-		return { text: (await extractText(pdf, { mergePages: true })).text.trim() };
+		const text = (await extractText(pdf, { mergePages: true })).text.trim();
+		if (!text) throw new Error("the PDF has no text layer (scanned pages?): its text cannot be extracted");
+		return { text };
 	}
 
 	if (IMAGE_TYPES.has(type)) {

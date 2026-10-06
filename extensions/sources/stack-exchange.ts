@@ -88,9 +88,12 @@ async function readQuestion({ site, questionId, answerId }: QuestionRef, { links
 	const answers = [...(question.answers ?? [])].sort((a, b) => rank(b) - rank(a) || b.score - a.score);
 
 	const comments = new Map<number, Comment[]>();
+	let partial = false;
 	const ids = [question.question_id, ...answers.map((a) => a.answer_id)];
 	for (let i = 0; i < ids.length; i += MAX_IDS) {
-		for (const comment of await listComments(api, ids.slice(i, i + MAX_IDS))) {
+		const batch = await listComments(api, ids.slice(i, i + MAX_IDS));
+		partial ||= batch.partial;
+		for (const comment of batch.comments) {
 			comments.set(comment.post_id, [...(comments.get(comment.post_id) ?? []), comment]);
 		}
 	}
@@ -111,24 +114,22 @@ async function readQuestion({ site, questionId, answerId }: QuestionRef, { links
 		sections.push(`${heading}\n\n${body(answer)}${commentList(answer.answer_id)}`);
 	}
 
-	return {
-		title: decodeEntities(question.title),
-		meta: [site, `score ${question.score}`, `${question.answer_count} answers`, `tags: ${question.tags.join(", ")}`, `asked ${isoDate(question.creation_date)} by ${name(question.owner)}`],
-		text: sections.join("\n\n"),
-	};
+	const meta = [site, `score ${question.score}`, `${question.answer_count} answers`, `tags: ${question.tags.join(", ")}`, `asked ${isoDate(question.creation_date)} by ${name(question.owner)}`];
+	if (partial) meta.push(`only the first ${MAX_COMMENT_PAGES * 100} comments are shown`);
+	return { title: decodeEntities(question.title), meta, text: sections.join("\n\n") };
 }
 
 type Api = <T>(path: string, query: Record<string, string>) => Promise<Wrapper<T>>;
 
-/** Comments of up to 100 posts, oldest first. */
-async function listComments(api: Api, postIds: number[]): Promise<Comment[]> {
+/** Comments of up to 100 posts, oldest first; `partial` when there were more than MAX_COMMENT_PAGES pages. */
+async function listComments(api: Api, postIds: number[]): Promise<{ comments: Comment[]; partial: boolean }> {
 	const comments: Comment[] = [];
 	for (let page = 1; page <= MAX_COMMENT_PAGES; page++) {
 		const batch = await api<Comment>(`/posts/${postIds.join(";")}/comments`, { filter: "withbody", sort: "creation", order: "asc", pagesize: "100", page: String(page) });
 		comments.push(...batch.items);
-		if (!batch.has_more) break;
+		if (!batch.has_more) return { comments, partial: false };
 	}
-	return comments;
+	return { comments, partial: true };
 }
 
 const NAMED_ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
